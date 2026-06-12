@@ -4,7 +4,7 @@
 
 ## Attach interactive GLSL fragment shaders to any HTML element with a few lines of code.
 
-### [Live Demo](https://glintjs.winterrabe.net/){:target="_blank"}
+### [Live Demo](https://glintjs.winterrabe.net/)
 
 ## Features
 
