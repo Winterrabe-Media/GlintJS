@@ -1,5 +1,5 @@
 
-![img](/src/assets/images/logo.svg)
+![img](https://github.com/Winterrabe-Media/GlintJS/blob/main/src/assets/images/logo.svg)
 # GlintJS
 
 ## Attach interactive GLSL fragment shaders to any HTML element with a few lines of code.
@@ -28,7 +28,7 @@ Attach interactive GLSL fragment shaders to any HTML element with minimal setup:
 
 ## Examples
 
-![Example images](/src/assets/images/example%20shaders.png)
+![Example images](https://github.com/Winterrabe-Media/GlintJS/blob/main/src/assets/images/example%20shaders.png)
 
 ## Installation
 
