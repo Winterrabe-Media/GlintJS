@@ -1,0 +1,42 @@
+{
+  "name": "glintjs",
+  "version": "0.1.0",
+  "description": "Lightweight WebGL shader backgrounds for modern websites",
+  "main": "./dist/glint-canvas.js",
+  "module": "./dist/glint-canvas.mjs",
+  "browser": "./dist/glint-canvas.global.js",
+  "types": "./dist/glint-canvas.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/glint-canvas.d.ts",
+      "import": "./dist/glint-canvas.mjs",
+      "require": "./dist/glint-canvas.js"
+    }
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:demo": "webpack --mode production",
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "start": "webpack serve --mode development"
+  },
+  "keywords": [],
+  "author": "Winterrabe - Media",
+  "license": "ISC",
+  "dependencies": {
+    "clean-webpack-plugin": "^4.0.0",
+    "html-webpack-plugin": "^5.6.4"
+  },
+  "devDependencies": {
+    "css-loader": "^7.1.4",
+    "esbuild-plugin-raw": "^0.4.2",
+    "raw-loader": "^4.0.2",
+    "ts-loader": "^9.5.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2",
+    "webpack-glsl-loader": "^1.0.1"
+  }
+}

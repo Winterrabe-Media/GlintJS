@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Type"
+          content="text/html; charset=utf-8">
+    <base href="/" />
+    <link rel="icon"
+          type="image/x-icon"
+          href="favicon.ico" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0" />
+    <meta name="author"
+          content="Winterrabe - Media">
+    <title>GlintJS — WebGL Shader Backgrounds for Any HTML Element</title>
+    <meta name="description"
+          content="Lightweight WebGL shader library for modern websites. Add responsive, interactive GLSL backgrounds to cards, sections, or full pages — zero dependencies." />
+
+    <style>
+        :root {
+            --bg: #080808;
+            --surface: #121212;
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #ffffff;
+            --muted: #9f9f9f;
+            --accent: #6f7cff;
+        }
+
+        a {
+            color: var(--text);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, sans-serif;
+            line-height: 1.6;
+            overflow-x: clip;
+        }
+
+        .hero {
+            min-height: 55vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 800px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.4rem 0.9rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--muted);
+            margin-bottom: 1.5rem;
+            background-color: var(--surface);
+        }
+
+        .hero h1 {
+            font-size: clamp(3rem, 8vw, 7rem);
+            line-height: 1;
+            margin-bottom: 1rem;
+        }
+
+        .hero p {
+            color: var(--muted);
+            max-width: 600px;
+            margin: 0 auto 2rem;
+            font-size: 1.5rem;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .btn-primary,
+        .btn-secondary {
+            text-decoration: none;
+            padding: 0.9rem 1.4rem;
+            border-radius: 12px;
+            transition: 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-secondary {
+            border: 1px solid var(--border);
+            color: white;
+        }
+
+        .btn-primary:hover,
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+        }
+
+        .features {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+            display: grid;
+            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
+        .feature {
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            background: transparent;
+            border: 1px solid rgb(11, 0, 92);
+        }
+
+        .feature h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            filter: drop-shadow(0px 2px 1px black);
+        }
+
+        .feature p {
+            color: var(--text);
+            filter: drop-shadow(0px 2px 1px black);
+        }
+
+        .showcase {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 4rem 2rem 3rem;
+        }
+
+        .showcase h2 {
+            text-align: center;
+            margin-bottom: 3rem;
+            font-size: 2.5rem;
+        }
+
+        .cards {
+            display: grid;
+            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+
+        .project-card {
+            position: relative;
+            overflow: hidden;
+            min-height: 320px;
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            border: 1px solid rgb(11, 0, 92);
+        }
+
+        .project-card canvas {
+            position: absolute;
+            inset: 0;
+        }
+
+        .card-content {
+            position: relative;
+            z-index: 2;
+            padding: 2rem;
+        }
+
+        .card-content h3 {
+            margin-bottom: 0.5rem;
+            filter: drop-shadow(0px 2px 1px black);
+            font-size: 1.5rem;
+        }
+
+        .card-content p {
+            color: rgba(255, 255, 255, 0.75);
+            filter: drop-shadow(0px 2px 1px black);
+        }
+
+        .code {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        .code h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+            margin-top: 2rem;
+        }
+
+        pre {
+            overflow-x: auto;
+            background: #0f0f0f;
+            background: transparent;
+            border-radius: 20px;
+            padding: 1rem 2rem;
+        }
+
+        code {
+            font-family: Consolas, monospace;
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--muted);
+            border-top: 1px solid var(--border);
+            background-color: var(--surface);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #glcanvas4 {
+            mix-blend-mode: lighten;
+        }
+
+        .copyright-notice {
+            color: var(--text);
+        }
+
+        .code-block {
+            position: relative;
+            border: 1px solid rgb(11, 0, 92);
+            border-radius: 20px;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            cursor: pointer;
+
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: white;
+
+            padding: 0.5rem 0.75rem;
+            border-radius: 10px;
+            z-index: 1;
+        }
+
+        .code canvas {
+            display: block;
+            border-radius: 20px !important;
+        }
+
+        @media screen and (max-width: 370px) {
+            .cards {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="hero">
+        <div class="hero-content">
+            <span class="badge">Lightweight WebGL Shader Framework</span>
+            <h1>GlintJs</h1>
+            <p>
+                Add responsive and interactive GLSL backgrounds to any HTML element
+                with a few lines of code.
+            </p>
+
+            <div class="hero-actions">
+                <a href="#code"
+                   class="btn-primary"
+                   role="button">Get Started</a>
+                <a href="https://github.com/Winterrabe-Media/GlintJS"
+                   target="_blank"
+                   class="btn-secondary">GitHub</a>
+            </div>
+        </div>
+    </header>
+
+    <section class="features">
+        <div class="feature color-grad-target">
+            <h3>Interactive</h3>
+            <p>Built-in mouse tracking and click pulse effects.</p>
+        </div>
+
+        <div class="feature color-grad-target">
+            <h3>Minimalistic</h3>
+            <p>No libs required.</p>
+        </div>
+
+        <div class="feature color-grad-target">
+            <h3>No limits</h3>
+            <p>Attach shaders to cards, sections, buttons, or full pages.</p>
+        </div>
+        <div class="feature color-grad-target">
+            <h3>Responsive</h3>
+            <p>Works on any screen size.</p>
+        </div>
+        <canvas class="color-grad"></canvas>
+        <canvas class="color-grad"></canvas>
+        <canvas class="color-grad"></canvas>
+        <canvas class="color-grad"></canvas>
+    </section>
+
+    <section class="showcase">
+        <h2>Example shaders</h2>
+
+        <div class="cards">
+            <div id="color-gradient"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="colorGradients"
+                            class="copy-btn">
+                        Copy Shader
+                    </button>
+                    <h3>Colored Gradient</h3>
+                    <p></p>
+                </div>
+            </div>
+
+            <div id="circles"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="circles"
+                            class="copy-btn">Copy Shader</button>
+                    <h3>Circles</h3>
+                    <p></p>
+                </div>
+            </div>
+
+            <div id="stars"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="stars"
+                            class="copy-btn">Copy Shader</button>
+                    <h3>Twinkling stars</h3>
+                    <p></p>
+                </div>
+            </div>
+
+            <div id="lensing"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="lensing"
+                            class="copy-btn">Copy Shader</button>
+                    <h3>Colorful lensing</h3>
+                    <p></p>
+                </div>
+            </div>
+
+            <div id="trippy-waves"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="trippyWaves"
+                            class="copy-btn">
+                        Copy Shader
+                    </button>
+                    <h3>Trippy waves</h3>
+                    <p></p>
+                </div>
+            </div>
+            <div id="default-shader"
+                 class="project-card">
+                <canvas class="project-canvas"></canvas>
+                <div class="card-content">
+                    <button data-shader="defaultShader"
+                            class="copy-btn">
+                        Copy Shader
+                    </button>
+                    <h3>Default shader</h3>
+                    <p></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="code"
+             id="code">
+        <h2>Installation</h2>
+        <div class="code-block">
+            <canvas></canvas>
+            <button class="copy-btn">Copy</button>
+            <pre><code>npm install glintjs</code></pre>
+        </div>
+        <br />
+        <div class="code-block">
+            <canvas></canvas>
+            <button class="copy-btn">Copy</button>
+            <pre><code>&lt;script src="https://cdn.jsdelivr.net/npm/glintjs/dist/glint-canvas.global.js"&gt;&lt;/script&gt;</code></pre>
+        </div>
+        <h2>Quick Start</h2>
+        <div class="code-block">
+            <canvas></canvas>
+            <button class="copy-btn">Copy</button>
+            <pre><code>
+const canvasEl = document.querySelector('#glcanvas');
+const target = document.querySelector('#target'); //optional
+
+const canvas = new GlintCanvas({
+    element: canvasEl,
+    targetElement: target, //optional
+    fragmentSource: shader
+});
+
+canvas.startRender();
+        </code></pre>
+        </div>
+        <h2>Default shader</h2>
+        <div class="code-block">
+            <canvas></canvas>
+            <button class="copy-btn">Copy</button>
+            <pre><code>
+precision highp float;
+
+uniform float uTime;
+uniform float uPulse;
+uniform vec2 uMouse;
+uniform vec3 uResolution;
+uniform vec2 uPulsePos;
+uniform vec2 uScale;
+
+void main() {
+   
+    vec2 fragCoord = gl_FragCoord.xy / uScale.xy;
+    vec2 uv = (fragCoord.xy / uResolution.xy -.5) * 2.;
+    float aspect = uResolution.x / uResolution.y;
+    uv.x *= aspect;
+    
+    vec2 mouseTarget = uMouse.xy / uScale.xy;
+    vec2 mouse = (mouseTarget / uResolution.xy - .5) * 2.;
+    mouse.x *= aspect;
+
+    gl_FragColor = vec4(uv.xy, 0.0, 1.0);
+}
+
+        </code></pre>
+        </div>
+    </section>
+
+    <canvas id="background"></canvas>
+    <footer>
+
+        <img style="display: inline;"
+             src="/assets/images/logo.svg"
+             width="120"
+             alt="GlintJS Logo"
+             description="GlintJS Logo">
+        <a href="https://www.winterrabe.net"
+           target="_blank">&copy; Winterrabe - Media GmbH</a>
+    </footer>
+</body>
+
+</html>
