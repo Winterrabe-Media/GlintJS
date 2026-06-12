@@ -5,6 +5,7 @@
 ## Attach interactive GLSL fragment shaders to any HTML element with a few lines of code.
 
 ### [Live Demo](https://glintjs.winterrabe.net/)
+### [Source Code](https://github.com/Winterrabe-Media/GlintJS)
 
 ## Features
 
