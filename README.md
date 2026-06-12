@@ -40,7 +40,7 @@ npm install @winterrabe/glintjs
 Or via CDN (no build step required):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/glintjs/dist/glint-canvas.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@winterrabe/glintjs/dist/glint-canvas.global.js"></script>
 ```
 
 ## Quick Start
@@ -201,7 +201,7 @@ Update a single uniform manually outside of `onUpdate`.
 <canvas id="glcanvas"></canvas>
 <div id="target">Hover me</div>
 
-<script src="https://cdn.jsdelivr.net/npm/glintjs/dist/glint-canvas.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@winterrabe/glintjs/dist/glint-canvas.global.js"></script>
 <script>
   const { GlintCanvas, Vector2 } = GlintCanvas;
 
