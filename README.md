@@ -33,7 +33,7 @@ Attach interactive GLSL fragment shaders to any HTML element with minimal setup:
 ## Installation
 
 ```bash
-npm install glintjs
+npm install @winterrabe/glintjs
 ```
 
 Or via CDN (no build step required):
