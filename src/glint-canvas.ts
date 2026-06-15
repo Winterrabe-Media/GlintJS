@@ -165,7 +165,7 @@ export class GlintCanvas {
         let fps = this.options.fps ?? 60;
         let mobileFps = this.options.mobileFps ?? 30;
         this.maxFps = this.isMobile ? mobileFps : fps;
-        this.maxDpr = this.options.maxPixelRatio ?? 1;
+        this.maxDpr = this.options.maxPixelRatio ?? 2;
 
         this.isInitialized = true;
         this.isDestroyed = false;
