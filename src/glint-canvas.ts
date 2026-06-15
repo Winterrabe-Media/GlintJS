@@ -52,6 +52,12 @@ export interface ICanvasOptions {
     element: HTMLCanvasElement
     /** Element to use as background target */
     targetElement?: HTMLElement
+    /**Default is 60. */
+    fps?: number
+    /**Default is 30. */
+    mobileFps?: number
+    /** Max device pixel ratio. Default: 2 */
+    maxPixelRatio?: number
     /** GLSL fragment shader source */
     fragmentSource?: string
     /** Speed of the pointerdown pulse animation (default: 1) */
@@ -70,7 +76,7 @@ export interface ICanvasOptions {
      * Called every frame just before rendering
      * @param {GlintCanvas} canvas Current GlitCanvas instance
      * @param {number} time Total time passed since rendering started
-     * @param {number} delta Time between current and last frame
+     * @param {number} delta Time between current and last frame in ms
      * @returns 
      */
     onUpdate?: (canvas: GlintCanvas, time: number, delta: number) => void
@@ -90,10 +96,14 @@ export class GlintCanvas {
     private startTime: number = performance.now();
     private fragmentSource: string = null;
 
+    private isInitialized: boolean = false;
+    private renderRequested: boolean = false;
+    private isRendering: boolean = false;
     private isDestroyed: boolean = false;
     private doPause: boolean = false;
     private doPulse: boolean = false;
     private doPulseGrow: boolean = true;
+
     private clickTimer = 0.0;
     private pulseSpeed = 1.0;
     private mousePosition = new Vector2(-9999, -9999);
@@ -104,29 +114,72 @@ export class GlintCanvas {
     /** Cached canvas bounding client rect */
     private domRectCache: DOMRect = null;
     private pulseEasing: (x: number) => number = undefined;
-    private resizeObserver: ResizeObserver = null;
 
     public additionalUniforms: Uniform[] = [];
+
+    private animationFrameId: number | null = null;
+    private positionBuffer: WebGLBuffer | null = null;
+
+    private resizeObserver: ResizeObserver = null;
+    private intersectionObserver: IntersectionObserver | null = null;
+    private maxFps: number = 60;
+    private maxDpr: number = 2;
+
+    private isMobile: boolean = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 
     constructor(options: ICanvasOptions) {
         this.options = options;
         this.canvas = options.element;
-        this.gl = options.element.getContext("webgl");
+        this.targetElement = this.options.targetElement ?? null;
+
+        const observedElement = this.targetElement ?? this.canvas;
+        if (observedElement === document.body) {
+            this.init();
+            this.startLoop();
+            return;
+        }
+
+        this.intersectionObserver = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                this.init();
+                if (this.renderRequested) {
+                    this.startLoop();
+                }
+                return;
+            }
+
+            this.deactivate();
+        }, { rootMargin: "100px" });
+
+        this.intersectionObserver.observe(observedElement);
+    }
+
+    private init(): void {
+        if (this.isInitialized) return;
+        this.gl = this.canvas.getContext("webgl");
         if (!this.gl) {
             throw new Error("WebGL not supported");
         }
 
+        let fps = this.options.fps ?? 60;
+        let mobileFps = this.options.mobileFps ?? 30;
+        this.maxFps = this.isMobile ? mobileFps : fps;
+        this.maxDpr = this.options.maxPixelRatio ?? 2;
+
+        this.isInitialized = true;
+        this.isDestroyed = false;
+
         this.clickPosition.moveOutofBounds();
         this.mousePosition.moveOutofBounds();
-        this.pulseSpeed = options.pulseSpeed ?? 1;
-        this.targetElement = options.targetElement ?? null;
-        this.fragmentSource = options.fragmentSource ?? defaultShader;
-        if (!options.fragmentSource) {
+        this.pulseSpeed = this.options.pulseSpeed ?? 1;
+        this.fragmentSource = this.options.fragmentSource ?? defaultShader;
+        if (!this.options.fragmentSource) {
             console.warn("No fragment shader supplied. Using default.")
         }
-        this.pulseEasing = options.pulseEasingOverride ?? this.easeInOutQuart;
-        this.scale = options.scaleModifier ?? new Vector2(1, 1);
-        this.zIndex = options.zIndex ?? -1;
+        this.pulseEasing = this.options.pulseEasingOverride ?? this.easeInOutQuart;
+        this.scale = this.options.scaleModifier ?? new Vector2(1, 1);
+        this.zIndex = this.options.zIndex ?? -1;
 
         const shaderProgram = this.initShaderProgram();
         this.programInfo = {
@@ -143,8 +196,8 @@ export class GlintCanvas {
                 scale: this.gl.getUniformLocation(shaderProgram, "uScale")
             },
         };
-        if (options.uniforms) {
-            this.additionalUniforms = options.uniforms;
+        if (this.options.uniforms) {
+            this.additionalUniforms = this.options.uniforms;
             for (const uniform of this.additionalUniforms) {
                 this.programInfo.uniformLocations[uniform.name] = this.gl.getUniformLocation(shaderProgram, uniform.name);
             }
@@ -192,6 +245,135 @@ export class GlintCanvas {
         this.canvas.addEventListener("pointerdown", this.onClick);
     }
 
+    public startRender(): void {
+        this.renderRequested = true;
+
+        if (this.isInitialized) {
+            this.startLoop();
+        }
+    }
+
+    private startLoop(): void {
+        if (this.isRendering) return;
+        if (!this.isInitialized || !this.gl || !this.programInfo) return;
+
+        this.isRendering = true;
+
+        const frameDuration = 1000 / this.maxFps;
+        let lastFrameTime = 0;
+
+        const loop = (now: number) => {
+            if (!this.isRendering) return;
+            if (!this.isInitialized || !this.gl || !this.programInfo) {
+                this.isRendering = false;
+                return;
+            }
+
+            if (!this.doPause) {
+                const delta = now - lastFrameTime;
+
+                if (now - lastFrameTime >= frameDuration) {
+                    const time = (now - this.startTime) / 1000;
+                    lastFrameTime = now;
+
+                    this.options.onUpdate?.(this, time, delta / 1000);
+                    this.drawScene(time, delta);
+                }
+            }
+
+            this.animationFrameId = requestAnimationFrame(loop);
+        };
+
+        this.animationFrameId = requestAnimationFrame(loop);
+    }
+
+    private deactivate(): void {
+        if (!this.isInitialized) return;
+
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        this.isRendering = false;
+
+        this.resizeObserver?.disconnect();
+        this.resizeObserver = null;
+
+        window.removeEventListener("resize", this.onResize);
+
+        this.canvas.removeEventListener("pointermove", this.onMouseMove);
+        this.canvas.removeEventListener("pointerdown", this.onClick);
+
+        this.targetElement?.removeEventListener("pointermove", this.onMouseMove);
+        this.targetElement?.removeEventListener("pointerdown", this.onClick);
+        this.targetElement?.removeEventListener("pointerenter", this.onMouseEnter);
+        this.targetElement?.removeEventListener("pointerleave", this.onMouseLeave);
+
+        if (this.gl) {
+            if (this.positionBuffer) {
+                this.gl.deleteBuffer(this.positionBuffer);
+                this.positionBuffer = null;
+            }
+
+            if (this.programInfo?.program) {
+                this.gl.deleteProgram(this.programInfo.program);
+            }
+
+            if (this.vertexShader) {
+                this.gl.deleteShader(this.vertexShader);
+                this.vertexShader = null;
+            }
+
+            if (this.fragmentShader) {
+                this.gl.deleteShader(this.fragmentShader);
+                this.fragmentShader = null;
+            }
+
+            const loseContext = this.gl.getExtension("WEBGL_lose_context");
+            loseContext?.loseContext();
+            this.replaceCanvasAfterContextLoss();
+        }
+
+        this.programInfo = null;
+        this.gl = null;
+        this.isInitialized = false;
+    }
+
+    public destroy(): void {
+        if (this.isDestroyed) return;
+
+        this.isDestroyed = true;
+
+        this.intersectionObserver?.disconnect();
+        this.intersectionObserver = null;
+
+        this.deactivate();
+
+        if (this.canvas.parentElement === this.targetElement) {
+            this.targetElement?.removeChild(this.canvas);
+        }
+    }
+
+    private replaceCanvasAfterContextLoss(): void {
+        if (!this.targetElement) return;
+
+        const oldCanvas = this.canvas;
+        const newCanvas = oldCanvas.cloneNode(false) as HTMLCanvasElement;
+
+        oldCanvas.replaceWith(newCanvas);
+
+        this.canvas = newCanvas;
+
+        this.canvas.style.position = "absolute";
+        this.canvas.style.inset = "0";
+        this.canvas.style.width = "100%";
+        this.canvas.style.height = "100%";
+        this.canvas.style.margin = "auto";
+        this.canvas.style.borderRadius = "inherit";
+        this.canvas.style.zIndex = this.zIndex.toString();
+    }
+
     public pause(): void {
         this.doPause = true;
         this.options.onPause?.(this);
@@ -202,28 +384,8 @@ export class GlintCanvas {
         this.options.onUnpause?.(this);
     }
 
-    public destroy(): void {
-        this.isDestroyed = true;
-        this.resizeObserver?.disconnect();
-        window.removeEventListener("resize", this.onResize);
-        window.removeEventListener("scroll", this.onScroll);
-        this.canvas.removeEventListener("pointermove", this.onMouseMove);
-        this.canvas.removeEventListener("pointerdown", this.onClick);
-        this.targetElement?.removeEventListener("pointermove", this.onMouseMove);
-        this.targetElement?.removeEventListener("pointerenter", this.onMouseEnter);
-        this.targetElement?.removeEventListener("pointerleave", this.onMouseLeave);
-        this.gl.deleteShader(this.vertexShader);
-        this.gl.deleteShader(this.fragmentShader);
-        this.gl.deleteProgram(this.programInfo.program);
-    }
-
     private onScroll = (): void => {
         this.domRectCache = this.canvas.getBoundingClientRect();
-        if (!this.isCanvasInViewport()) {
-            this.pause();
-            return;
-        }
-        this.unpause();
     }
 
     private onClick = (): void => {
@@ -233,7 +395,7 @@ export class GlintCanvas {
     }
 
     private onResize = () => {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
 
         let displayW: number;
         let displayH: number;
@@ -274,33 +436,13 @@ export class GlintCanvas {
         this.mousePosition = new Vector2(x, y);
     }
 
-    public startRender(maxFps: number = 60) {
-        const frameDuration = 1000 / maxFps;
-        let lastFrameTime = 0;
-
-        const loop = (now: number) => {
-            if (this.isDestroyed) return;
-
-            if (this.doPause) {
-                requestAnimationFrame(loop);
-                return;
-            }
-
-            const delta = now - lastFrameTime;
-
-            if (now - lastFrameTime >= frameDuration) {
-                const time = (now - this.startTime) / 1000;
-                lastFrameTime = now;
-                this.options.onUpdate?.(this, time, delta / 1000);
-                this.drawScene(time, delta);
-            }
-            requestAnimationFrame(loop);
-        };
-
-        requestAnimationFrame(loop);
-    }
-
     private drawScene(time: number, delta: number) {
+        if (!this.gl || !this.programInfo || !this.positionBuffer) return;
+
+        if (this.gl.isContextLost()) {
+            return;
+        }
+
         const numComponents = 2;
         const type = this.gl.FLOAT;
         const normalize = false;
@@ -364,8 +506,8 @@ export class GlintCanvas {
     }
 
     private initBuffers() {
-        const positionBuffer = this.gl.createBuffer();
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, positionBuffer);
+        this.positionBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
 
         const positions = [
             1.0, 1.0,
@@ -405,19 +547,6 @@ export class GlintCanvas {
         }
 
         return shader;
-    }
-
-    private isCanvasInViewport() {
-        const rect = this.domRectCache;
-        const scrollTop = window.scrollY || window.pageYOffset;
-
-        const elementTop = rect.top + scrollTop;
-        const elementBottom = rect.bottom + scrollTop;
-
-        const viewportTop = scrollTop;
-        const viewportBottom = scrollTop + window.innerHeight;
-
-        return elementBottom > viewportTop && elementTop < viewportBottom;
     }
 
     /**

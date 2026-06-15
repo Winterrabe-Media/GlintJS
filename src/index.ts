@@ -77,8 +77,10 @@ const shaders = {
         element: defaultEl,
         targetElement: defaultTarget,
         fragmentSource: defaultShader,
+        fps: 1,
+        mobileFps: 1
     });
-    glintDefault.startRender(1);
+    glintDefault.startRender();
 
     const trippyWavesTarget = document.querySelector("#trippy-waves") as HTMLElement;
     const trippyWavesEl = trippyWavesTarget.querySelector("canvas") as HTMLCanvasElement;
@@ -107,8 +109,9 @@ const shaders = {
         element: starsEl,
         targetElement: starsTarget,
         fragmentSource: stars,
+        scaleModifier: new Vector2(8, 8)
     });
-    glintStars.startRender(30);
+    glintStars.startRender();
 
 
     const circlesTarget = document.querySelector("#circles") as HTMLElement;
@@ -143,6 +146,7 @@ const shaders = {
         targetElement: backgroundTarget,
         fragmentSource: stars,
         zIndex: -2,
+        maxPixelRatio: 1
     });
     glintBackground.startRender();
 
@@ -160,7 +164,7 @@ const shaders = {
                 { name: "uCycle", value: i + 1 }
             ]
         });
-        glint.startRender(30);
+        glint.startRender();
     }
 
 })();
