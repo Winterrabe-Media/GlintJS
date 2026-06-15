@@ -170,6 +170,10 @@ export class GlintCanvas {
         this.isInitialized = true;
         this.isDestroyed = false;
 
+        this.doPulse = false;
+        this.doPulseGrow = false;
+        this.clickTimer = 0;
+
         this.clickPosition.moveOutofBounds();
         this.mousePosition.moveOutofBounds();
         this.pulseSpeed = this.options.pulseSpeed ?? 1;
