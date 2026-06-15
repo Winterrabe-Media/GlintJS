@@ -146,6 +146,7 @@ const shaders = {
         targetElement: backgroundTarget,
         fragmentSource: stars,
         zIndex: -2,
+        maxPixelRatio: 1
     });
     glintBackground.startRender();
 
