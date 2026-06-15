@@ -270,7 +270,7 @@ export class GlintCanvas {
     }
 
     private onResize = () => {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
         let displayW: number;
         let displayH: number;
