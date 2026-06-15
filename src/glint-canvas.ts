@@ -108,6 +108,9 @@ export class GlintCanvas {
 
     public additionalUniforms: Uniform[] = [];
 
+    private animationFrameId: number | null = null;
+    private positionBuffer: WebGLBuffer | null = null;
+
     constructor(options: ICanvasOptions) {
         this.options = options;
         this.canvas = options.element;
@@ -203,6 +206,13 @@ export class GlintCanvas {
     }
 
     public destroy(): void {
+        if (this.isDestroyed) return;
+
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
         this.isDestroyed = true;
         this.resizeObserver?.disconnect();
         window.removeEventListener("resize", this.onResize);
@@ -212,9 +222,36 @@ export class GlintCanvas {
         this.targetElement?.removeEventListener("pointermove", this.onMouseMove);
         this.targetElement?.removeEventListener("pointerenter", this.onMouseEnter);
         this.targetElement?.removeEventListener("pointerleave", this.onMouseLeave);
-        this.gl.deleteShader(this.vertexShader);
-        this.gl.deleteShader(this.fragmentShader);
-        this.gl.deleteProgram(this.programInfo.program);
+
+        if (this.gl) {
+            if (this.positionBuffer) {
+                this.gl.deleteBuffer(this.positionBuffer);
+                this.positionBuffer = null;
+            }
+
+            if (this.programInfo?.program) {
+                this.gl.deleteProgram(this.programInfo.program);
+            }
+
+            if (this.vertexShader) {
+                this.gl.deleteShader(this.vertexShader);
+            }
+
+            if (this.fragmentShader) {
+                this.gl.deleteShader(this.fragmentShader);
+            }
+
+            const loseContext = this.gl.getExtension("WEBGL_lose_context");
+            loseContext?.loseContext();
+        }
+        this.programInfo = null;
+        this.vertexShader = null;
+        this.fragmentShader = null;
+        this.gl = null;
+
+        if (this.canvas.parentElement === this.targetElement) {
+            this.targetElement?.removeChild(this.canvas);
+        }
     }
 
     private onScroll = (): void => {
@@ -281,23 +318,19 @@ export class GlintCanvas {
         const loop = (now: number) => {
             if (this.isDestroyed) return;
 
-            if (this.doPause) {
-                requestAnimationFrame(loop);
-                return;
+            if (!this.doPause) {
+                const delta = now - lastFrameTime;
+                if (now - lastFrameTime >= frameDuration) {
+                    const time = (now - this.startTime) / 1000;
+                    lastFrameTime = now;
+                    this.options.onUpdate?.(this, time, delta / 1000);
+                    this.drawScene(time, delta);
+                }
             }
-
-            const delta = now - lastFrameTime;
-
-            if (now - lastFrameTime >= frameDuration) {
-                const time = (now - this.startTime) / 1000;
-                lastFrameTime = now;
-                this.options.onUpdate?.(this, time, delta / 1000);
-                this.drawScene(time, delta);
-            }
-            requestAnimationFrame(loop);
+            this.animationFrameId = requestAnimationFrame(loop);
         };
 
-        requestAnimationFrame(loop);
+        this.animationFrameId = requestAnimationFrame(loop);
     }
 
     private drawScene(time: number, delta: number) {
@@ -364,8 +397,8 @@ export class GlintCanvas {
     }
 
     private initBuffers() {
-        const positionBuffer = this.gl.createBuffer();
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, positionBuffer);
+        this.positionBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
 
         const positions = [
             1.0, 1.0,
