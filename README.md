@@ -120,6 +120,12 @@ interface ICanvasOptions {
   element: HTMLCanvasElement;
   /** Element to use as background target */
   targetElement?: HTMLElement;
+  /**Default is 60. */
+  fps?: number
+  /**Default is 30. */
+  mobileFps?: number
+  /** Max device pixel ratio. Default: 2 */
+  maxPixelRatio?: number
   /** GLSL fragment shader source */
   fragmentSource?: string;
   /** Speed of the click pulse animation (default: 1) */
@@ -175,12 +181,12 @@ const canvas = new GlintCanvas({
 
 ## API
 
-### `startRender(maxFps?: number)`
+### `startRender()`
 
-Starts the render loop. Defaults to 60 fps.
+Starts the render loop.
 
 ```typescript
-canvas.startRender(30); // cap at 30 fps
+canvas.startRender();
 ```
 
 ### `pause()` / `unpause()`
