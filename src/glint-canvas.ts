@@ -395,18 +395,16 @@ export class GlintCanvas {
     }
 
     private onResize = () => {
-        const dpr = Math.min(window.devicePixelRatio || 1, this.maxDpr);
-
         let displayW: number;
         let displayH: number;
 
         if (this.targetElement) {
             const bounds = this.targetElement.getBoundingClientRect();
-            displayW = Math.floor(bounds.width * dpr);
-            displayH = Math.floor(bounds.height * dpr);
+            displayW = Math.floor(bounds.width * this.dpr);
+            displayH = Math.floor(bounds.height * this.dpr);
         } else {
-            displayW = Math.floor(this.canvas.clientWidth * dpr);
-            displayH = Math.floor(this.canvas.clientHeight * dpr);
+            displayW = Math.floor(this.canvas.clientWidth * this.dpr);
+            displayH = Math.floor(this.canvas.clientHeight * this.dpr);
         }
 
         if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
@@ -430,9 +428,8 @@ export class GlintCanvas {
 
     private onMouseMove = (e: PointerEvent): void => {
         const rect = this.domRectCache;
-        const dpr = window.devicePixelRatio || 1;
-        const x = (e.clientX - rect.left) * dpr;
-        const y = (rect.height - (e.clientY - rect.top)) * dpr;
+        const x = (e.clientX - rect.left) * this.dpr;
+        const y = (rect.height - (e.clientY - rect.top)) * this.dpr;
         this.mousePosition = new Vector2(x, y);
     }
 
@@ -481,7 +478,7 @@ export class GlintCanvas {
         this.gl.uniform1f(this.programInfo.uniformLocations.pulse, this.pulseEasing(this.clickTimer));
         this.gl.uniform1f(this.programInfo.uniformLocations.time, time);
         this.gl.uniform3f(this.programInfo.uniformLocations.resolution, this.canvas.width, this.canvas.height, 1.0);
-        this.gl.uniform2f(this.programInfo.uniformLocations.scale, this.scale.x, this.scale.y);
+        this.gl.uniform2f(this.programInfo.uniformLocations.scale, this.scale.x * this.dpr, this.scale.y * this.dpr);
         this.gl.uniform2f(this.programInfo.uniformLocations.mouse, this.mousePosition.x, this.mousePosition.y);
 
         for (const uniform of this.additionalUniforms) {
@@ -547,6 +544,10 @@ export class GlintCanvas {
         }
 
         return shader;
+    }
+
+    private get dpr(): number {
+        return Math.min(window.devicePixelRatio || 1, this.maxDpr);
     }
 
     /**
