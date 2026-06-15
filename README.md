@@ -245,3 +245,28 @@ Update a single uniform manually outside of `onUpdate`.
   canvas.startRender();
 </script>
 ```
+
+## Limitations
+
+### Browser WebGL context limits
+
+GlintJS creates a WebGL context for each active `GlintCanvas` instance. Modern browsers limit the number of active WebGL contexts per page or browser process to protect GPU memory and overall system stability.
+
+If too many WebGL contexts are active at the same time, the browser may automatically lose older contexts. This can result in warnings such as:
+
+```txt
+Too many active WebGL contexts. Oldest context will be lost.
+```
+
+The exact limit depends on the browser, device, operating system, graphics driver, and available GPU resources. Mobile browsers and low-power devices may reach this limit earlier than desktop browsers.
+
+GlintJS includes lazy initialization and cleanup mechanisms to reduce the number of active WebGL contexts. Still, for best results:
+
+* Avoid running a large number of `GlintCanvas` instances at the same time.
+* Prefer decorative shader effects only where they add visible value.
+* Use lower FPS values for background or subtle effects.
+* Use reduced settings on mobile devices.
+* Destroy unused instances when they are no longer needed.
+* Consider using one shared or persistent background effect instead of many independent effects.
+
+For pages with many shader-enhanced elements, it is recommended to initialize effects only when they are near the viewport and release inactive contexts when they are no longer visible.
