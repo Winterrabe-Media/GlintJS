@@ -115,6 +115,8 @@ export class GlintCanvas {
     private clickTimer = 0.0;
     private pulseSpeed = 1.0;
     private mousePosition = new Vector2(-9999, -9999);
+    /** Last known pointer position in viewport coordinates, or null while the pointer is away */
+    private pointerClient: Vector2 = null;
     private clickPosition = new Vector2(-9999, -9999);
     private options: ICanvasOptions = null;
     private scale: Vector2 = null;
@@ -208,6 +210,7 @@ export class GlintCanvas {
 
         this.clickPosition.moveOutofBounds();
         this.mousePosition.moveOutofBounds();
+        this.pointerClient = null;
         this.pulseSpeed = this.options.pulseSpeed ?? 1;
         this.fragmentSource = this.options.fragmentSource ?? defaultShader;
         if (!this.options.fragmentSource) {
@@ -259,7 +262,7 @@ export class GlintCanvas {
             this.targetElement.addEventListener("pointerleave", this.onMouseLeave);
             this.targetElement.addEventListener("pointermove", this.onMouseMove);
             this.targetElement.addEventListener("pointerdown", this.onClick);
-            window.addEventListener("scroll", this.onScroll);
+            window.addEventListener("scroll", this.onScroll, { passive: true, capture: true });
             window.addEventListener("resize", this.onResize);
 
 
@@ -279,7 +282,10 @@ export class GlintCanvas {
         this.onResize();
         this.onScroll();
 
+        window.addEventListener("scroll", this.onScroll, { passive: true, capture: true });
         window.addEventListener("resize", this.onResize);
+        this.canvas.addEventListener("pointerenter", this.onMouseEnter);
+        this.canvas.addEventListener("pointerleave", this.onMouseLeave);
         this.canvas.addEventListener("pointermove", this.onMouseMove);
         this.canvas.addEventListener("pointerdown", this.onClick);
     }
@@ -339,8 +345,11 @@ export class GlintCanvas {
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
 
+        window.removeEventListener("scroll", this.onScroll, { capture: true });
         window.removeEventListener("resize", this.onResize);
 
+        this.canvas.removeEventListener("pointerenter", this.onMouseEnter);
+        this.canvas.removeEventListener("pointerleave", this.onMouseLeave);
         this.canvas.removeEventListener("pointermove", this.onMouseMove);
         this.canvas.removeEventListener("pointerdown", this.onClick);
 
@@ -426,6 +435,7 @@ export class GlintCanvas {
 
     private onScroll = (): void => {
         this.domRectCache = this.canvas.getBoundingClientRect();
+        this.projectPointer();
     }
 
     private onClick = (): void => {
@@ -454,6 +464,7 @@ export class GlintCanvas {
         }
 
         this.domRectCache = this.canvas.getBoundingClientRect();
+        this.projectPointer();
     }
 
     private onMouseEnter = (e: PointerEvent): void => {
@@ -463,13 +474,27 @@ export class GlintCanvas {
 
     private onMouseLeave = (e: PointerEvent): void => {
         this.canvas.classList.remove("hover");
+        this.pointerClient = null;
         this.mousePosition.moveOutofBounds();
     }
 
     private onMouseMove = (e: PointerEvent): void => {
+        this.pointerClient = new Vector2(e.clientX, e.clientY);
+        this.projectPointer();
+    }
+
+    /**
+     * Projects the last known viewport pointer position into canvas pixel space.
+     * Has to run whenever the canvas moves relative to the viewport, not just on
+     * pointermove - scrolling shifts the canvas under a stationary pointer without
+     * emitting any pointer event.
+     */
+    private projectPointer(): void {
+        if (!this.pointerClient || !this.domRectCache) return;
+
         const rect = this.domRectCache;
-        const x = (e.clientX - rect.left) * this.dpr;
-        const y = (rect.height - (e.clientY - rect.top)) * this.dpr;
+        const x = (this.pointerClient.x - rect.left) * this.dpr;
+        const y = (rect.height - (this.pointerClient.y - rect.top)) * this.dpr;
         this.mousePosition = new Vector2(x, y);
     }
 
