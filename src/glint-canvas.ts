@@ -218,10 +218,16 @@ export class GlintCanvas {
 
         for (const version of candidates) {
             const context = this.canvas.getContext(version) as WebGLRenderingContext | WebGL2RenderingContext | null;
-            if (context) {
-                this.activeVersion = version;
-                return context;
+            if (!context) continue;
+
+            if (context.isContextLost()) {
+                // Externally lost (GPU reset, too many live contexts). drawScene would
+                // bail out every frame and render nothing at all, so say so out loud.
+                console.warn(`GlintCanvas: the "${version}" context of this canvas is lost and cannot be restored. Rendering stays blank until the canvas is recreated.`);
             }
+
+            this.activeVersion = version;
+            return context;
         }
 
         this.activeVersion = null;
@@ -415,9 +421,16 @@ export class GlintCanvas {
                 this.fragmentShader = null;
             }
 
-            const loseContext = this.gl.getExtension("WEBGL_lose_context");
-            loseContext?.loseContext();
-            this.replaceCanvasAfterContextLoss();
+            // Losing the context returns it to the browser's context budget, but it can
+            // never be re-acquired from the same canvas element - getContext() keeps
+            // handing back the lost one. Only do it when a fresh canvas replaces this
+            // one; a caller-supplied canvas without a targetElement has to keep its
+            // context so the next init() can reuse it.
+            if (this.targetElement) {
+                const loseContext = this.gl.getExtension("WEBGL_lose_context");
+                loseContext?.loseContext();
+                this.replaceCanvasAfterContextLoss();
+            }
         }
 
         this.programInfo = null;
