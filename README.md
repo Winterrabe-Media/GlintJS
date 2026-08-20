@@ -15,6 +15,7 @@
 - **Element backgrounds** — attach to any element, not just full-page canvases
 - **Auto-pause** — rendering stops when the canvas scrolls out of view
 - **Scale modifier** — adjust the shader coordinate space independently of canvas size
+- **WebGL 1 & 2** — run GLSL ES 1.00 or 3.00 shaders, with optional automatic context selection
 - **Responsive** — works on any screen size
 
 ## Why GlintJS?
@@ -128,16 +129,23 @@ interface ICanvasOptions {
   maxPixelRatio?: number
   /** GLSL fragment shader source */
   fragmentSource?: string;
+  /** WebGL context version. "auto" tries webgl2 first and falls back to webgl.
+   * Has to be "webgl2" or "auto" for `#version 300 es` fragment shaders.
+   * Default is "webgl" */
+  webglVersion?: WebGLVersion;
   /** Speed of the click pulse animation (default: 1) */
   pulseSpeed?: number;
   /** Additional custom uniforms */
   uniforms?: Uniform[];
   /** Scale the shader coordinate space (default: Vector2(1, 1)) */
   scaleModifier?: Vector2;
+  /** z-index applied to the canvas. Default is -1 */
+  zIndex?: number;
   /** Override the pulse easing function */
   pulseEasingOverride?: (x: number) => number;
-  /** Called every frame before rendering */
-  onUpdate?: (canvas: GlintCanvas) => void;
+  /** Called every frame before rendering.
+   * `time` is seconds since rendering started, `delta` seconds since the last frame. */
+  onUpdate?: (canvas: GlintCanvas, time: number, delta: number) => void;
 
   onHover?: (canvas: GlintCanvas) => void;
   onPause?: (canvas: GlintCanvas) => void;
@@ -200,6 +208,16 @@ Removes all event listeners and cleans up WebGL resources.
 ### `setCustomUniform(uniform: Uniform)`
 
 Update a single uniform manually outside of `onUpdate`.
+
+### `version`
+
+Read-only. The WebGL version of the active context — `"webgl"`, `"webgl2"`, or `null`.
+
+```typescript
+console.log(canvas.version); // "webgl2"
+```
+
+Because GlintJS initializes lazily once the canvas approaches the viewport, this is `null` until then, and `null` again after `destroy()`.
 
 ## Plain JS (no bundler)
 

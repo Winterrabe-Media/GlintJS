@@ -47,6 +47,9 @@ export type Uniform = {
     value: number | boolean | Vector2
 }
 
+/** WebGL context version. `"auto"` prefers WebGL 2 and falls back to WebGL 1. */
+export type WebGLVersion = "webgl" | "webgl2" | "auto";
+
 export interface ICanvasOptions {
     /** Canvas element to render on */
     element: HTMLCanvasElement
@@ -60,6 +63,11 @@ export interface ICanvasOptions {
     maxPixelRatio?: number
     /** GLSL fragment shader source */
     fragmentSource?: string
+    /** WebGL context version. `"auto"` tries webgl2 first and falls back to webgl.
+     * Has to be `"webgl2"` or `"auto"` for `#version 300 es` fragment shaders.
+     * Default is `"webgl"`.
+     */
+    webglVersion?: WebGLVersion
     /** Speed of the pointerdown pulse animation (default: 1) */
     pulseSpeed?: number
     /** Additional custom uniforms */
@@ -89,7 +97,7 @@ export class GlintCanvas {
 
     private canvas: HTMLCanvasElement = null;
     private targetElement: HTMLElement = null;
-    private gl: WebGLRenderingContext = null;
+    private gl: WebGLRenderingContext | WebGL2RenderingContext = null;
     private fragmentShader: WebGLShader = null;
     private vertexShader: WebGLShader = null;
     private programInfo: ProgramInfo | null = null;
@@ -124,13 +132,15 @@ export class GlintCanvas {
     private intersectionObserver: IntersectionObserver | null = null;
     private maxFps: number = 60;
     private maxDpr: number = 2;
-
+    private webglVersion: WebGLVersion = null;
+    private activeVersion: "webgl" | "webgl2" = null;
     private isMobile: boolean = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 
     constructor(options: ICanvasOptions) {
         this.options = options;
         this.canvas = options.element;
+        this.webglVersion = options.webglVersion ?? "webgl";
         this.targetElement = this.options.targetElement ?? null;
 
         const observedElement = this.targetElement ?? this.canvas;
@@ -155,11 +165,33 @@ export class GlintCanvas {
         this.intersectionObserver.observe(observedElement);
     }
 
+    /** WebGL version of the active context, or `null` while not initialized. */
+    public get version(): "webgl" | "webgl2" | null {
+        return this.activeVersion;
+    }
+
+    private createContext(): WebGLRenderingContext | WebGL2RenderingContext | null {
+        const candidates: ("webgl" | "webgl2")[] = this.webglVersion === "auto"
+            ? ["webgl2", "webgl"]
+            : [this.webglVersion];
+
+        for (const version of candidates) {
+            const context = this.canvas.getContext(version) as WebGLRenderingContext | WebGL2RenderingContext | null;
+            if (context) {
+                this.activeVersion = version;
+                return context;
+            }
+        }
+
+        this.activeVersion = null;
+        return null;
+    }
+
     private init(): void {
         if (this.isInitialized) return;
-        this.gl = this.canvas.getContext("webgl");
+        this.gl = this.createContext();
         if (!this.gl) {
-            throw new Error("WebGL not supported");
+            throw new Error(`WebGL not supported (requested version: "${this.webglVersion}")`);
         }
 
         let fps = this.options.fps ?? 60;
@@ -180,6 +212,9 @@ export class GlintCanvas {
         this.fragmentSource = this.options.fragmentSource ?? defaultShader;
         if (!this.options.fragmentSource) {
             console.warn("No fragment shader supplied. Using default.")
+        }
+        if (this.isGlsl3 && this.activeVersion !== "webgl2") {
+            throw new Error(`Fragment shader declares "#version 300 es" but the active context is WebGL 1. Set webglVersion to "webgl2" or "auto".`);
         }
         this.pulseEasing = this.options.pulseEasingOverride ?? this.easeInOutQuart;
         this.scale = this.options.scaleModifier ?? new Vector2(1, 1);
@@ -341,6 +376,7 @@ export class GlintCanvas {
 
         this.programInfo = null;
         this.gl = null;
+        this.activeVersion = null;
         this.isInitialized = false;
     }
 
@@ -537,14 +573,17 @@ export class GlintCanvas {
         return shaderProgram;
     }
 
-    private loadShader(gl: WebGLRenderingContext, type: number, source: string): WebGLProgram {
+    private loadShader(gl: WebGLRenderingContext | WebGL2RenderingContext, type: number, source: string): WebGLShader {
         const shader = gl.createShader(type);
         gl.shaderSource(shader, source);
         gl.compileShader(shader);
 
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            // Read the log first: a deleted shader raises INVALID_VALUE and returns null.
+            const log = gl.getShaderInfoLog(shader);
             gl.deleteShader(shader);
-            throw new Error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            const stage = type === gl.VERTEX_SHADER ? "vertex" : "fragment";
+            throw new Error(`An error occurred compiling the ${stage} shader (${this.activeVersion}, GLSL ES ${this.isGlsl3 ? "3.00" : "1.00"}): ${log}`);
         }
 
         return shader;
@@ -561,11 +600,28 @@ export class GlintCanvas {
         return x < 0.5 ? 8 * x * x * x * x : 1 - Math.pow(-2 * x + 2, 4) / 2;
     }
 
-    private readonly vertexSource: string = `
-        attribute vec4 aVertexPosition;
+    /** True when the fragment source declares GLSL ES 3.00. */
+    private get isGlsl3(): boolean {
+        return /^\s*#version\s+300\s+es\b/.test(this.fragmentSource ?? "");
+    }
 
-        void main() {
-            gl_Position = aVertexPosition;
-        }`;
+    /** Vertex shader matching the GLSL version of the fragment source.
+     * Both stages have to declare the same version or linking fails.
+     */
+    private get vertexSource(): string {
+        // No leading whitespace: #version has to be the first token of the source.
+        if (this.isGlsl3) {
+            return `#version 300 es
+                in vec4 aVertexPosition;
+                void main() {
+                    gl_Position = aVertexPosition;
+                }`;
+        }
+
+        return `attribute vec4 aVertexPosition;
+                void main() {
+                    gl_Position = aVertexPosition;
+                }`;
+    }
 
 }
