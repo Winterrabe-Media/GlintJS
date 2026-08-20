@@ -115,8 +115,17 @@ export class GlintCanvas {
     private clickTimer = 0.0;
     private pulseSpeed = 1.0;
     private mousePosition = new Vector2(-9999, -9999);
-    /** Last known pointer position in viewport coordinates, or null while the pointer is away */
-    private pointerClient: Vector2 = null;
+
+    /**
+     * Viewport position of the pointer, shared by all instances. There is only one
+     * physical pointer, and every instance needs to know where it is even while it is
+     * outside its own bounds. Null until the first pointer event of the page, and
+     * again once the pointer leaves the document.
+     */
+    private static pointerClient: Vector2 = null;
+    private static pointerTrackerRefs: number = 0;
+    /** Whether this instance currently holds a reference on the shared tracker */
+    private pointerTracked: boolean = false;
     private clickPosition = new Vector2(-9999, -9999);
     private options: ICanvasOptions = null;
     private scale: Vector2 = null;
@@ -167,6 +176,36 @@ export class GlintCanvas {
         this.intersectionObserver.observe(observedElement);
     }
 
+    private static readonly trackPointer = (e: PointerEvent): void => {
+        GlintCanvas.pointerClient = new Vector2(e.clientX, e.clientY);
+    }
+
+    private static readonly clearPointer = (): void => {
+        GlintCanvas.pointerClient = null;
+    }
+
+    private attachPointerTracker(): void {
+        if (this.pointerTracked) return;
+        this.pointerTracked = true;
+
+        if (GlintCanvas.pointerTrackerRefs++ > 0) return;
+
+        window.addEventListener("pointermove", GlintCanvas.trackPointer, { passive: true, capture: true });
+        window.addEventListener("pointerdown", GlintCanvas.trackPointer, { passive: true, capture: true });
+        document.addEventListener("pointerleave", GlintCanvas.clearPointer);
+    }
+
+    private detachPointerTracker(): void {
+        if (!this.pointerTracked) return;
+        this.pointerTracked = false;
+
+        if (--GlintCanvas.pointerTrackerRefs > 0) return;
+
+        window.removeEventListener("pointermove", GlintCanvas.trackPointer, { capture: true });
+        window.removeEventListener("pointerdown", GlintCanvas.trackPointer, { capture: true });
+        document.removeEventListener("pointerleave", GlintCanvas.clearPointer);
+    }
+
     /** WebGL version of the active context, or `null` while not initialized. */
     public get version(): "webgl" | "webgl2" | null {
         return this.activeVersion;
@@ -210,7 +249,7 @@ export class GlintCanvas {
 
         this.clickPosition.moveOutofBounds();
         this.mousePosition.moveOutofBounds();
-        this.pointerClient = null;
+        this.attachPointerTracker();
         this.pulseSpeed = this.options.pulseSpeed ?? 1;
         this.fragmentSource = this.options.fragmentSource ?? defaultShader;
         if (!this.options.fragmentSource) {
@@ -260,7 +299,6 @@ export class GlintCanvas {
             this.targetElement.appendChild(this.canvas);
             this.targetElement.addEventListener("pointerenter", this.onMouseEnter);
             this.targetElement.addEventListener("pointerleave", this.onMouseLeave);
-            this.targetElement.addEventListener("pointermove", this.onMouseMove);
             this.targetElement.addEventListener("pointerdown", this.onClick);
             window.addEventListener("scroll", this.onScroll, { passive: true, capture: true });
             window.addEventListener("resize", this.onResize);
@@ -286,7 +324,6 @@ export class GlintCanvas {
         window.addEventListener("resize", this.onResize);
         this.canvas.addEventListener("pointerenter", this.onMouseEnter);
         this.canvas.addEventListener("pointerleave", this.onMouseLeave);
-        this.canvas.addEventListener("pointermove", this.onMouseMove);
         this.canvas.addEventListener("pointerdown", this.onClick);
     }
 
@@ -348,12 +385,12 @@ export class GlintCanvas {
         window.removeEventListener("scroll", this.onScroll, { capture: true });
         window.removeEventListener("resize", this.onResize);
 
+        this.detachPointerTracker();
+
         this.canvas.removeEventListener("pointerenter", this.onMouseEnter);
         this.canvas.removeEventListener("pointerleave", this.onMouseLeave);
-        this.canvas.removeEventListener("pointermove", this.onMouseMove);
         this.canvas.removeEventListener("pointerdown", this.onClick);
 
-        this.targetElement?.removeEventListener("pointermove", this.onMouseMove);
         this.targetElement?.removeEventListener("pointerdown", this.onClick);
         this.targetElement?.removeEventListener("pointerenter", this.onMouseEnter);
         this.targetElement?.removeEventListener("pointerleave", this.onMouseLeave);
@@ -435,10 +472,14 @@ export class GlintCanvas {
 
     private onScroll = (): void => {
         this.domRectCache = this.canvas.getBoundingClientRect();
-        this.projectPointer();
     }
 
     private onClick = (): void => {
+        // The window-level capture listener already recorded this pointerdown, so
+        // projecting here gives the pulse a correct position even on a touch tap,
+        // where no pointermove ever precedes it.
+        this.projectPointer();
+
         this.doPulseGrow = true;
         this.doPulse = true;
         this.clickPosition = Vector2.from(this.mousePosition);
@@ -464,37 +505,40 @@ export class GlintCanvas {
         }
 
         this.domRectCache = this.canvas.getBoundingClientRect();
-        this.projectPointer();
     }
 
-    private onMouseEnter = (e: PointerEvent): void => {
+    /** Hover state only - the mouse uniform is derived from geometry, see projectPointer */
+    private onMouseEnter = (): void => {
         this.canvas.classList.add("hover");
         this.options.onHover?.(this);
     }
 
-    private onMouseLeave = (e: PointerEvent): void => {
+    private onMouseLeave = (): void => {
         this.canvas.classList.remove("hover");
-        this.pointerClient = null;
-        this.mousePosition.moveOutofBounds();
-    }
-
-    private onMouseMove = (e: PointerEvent): void => {
-        this.pointerClient = new Vector2(e.clientX, e.clientY);
-        this.projectPointer();
     }
 
     /**
-     * Projects the last known viewport pointer position into canvas pixel space.
-     * Has to run whenever the canvas moves relative to the viewport, not just on
-     * pointermove - scrolling shifts the canvas under a stationary pointer without
-     * emitting any pointer event.
+     * Projects the shared pointer position into canvas pixel space, or moves the mouse
+     * out of bounds while the pointer is not over this canvas.
+     *
+     * Deliberately derived from geometry rather than from pointerenter/pointerleave:
+     * boundary events are hit-tested asynchronously and are not emitted at all when the
+     * canvas moves under a stationary pointer. They therefore cannot answer "is the
+     * pointer over me" while the page scrolls, nor after a deactivate/init cycle.
      */
     private projectPointer(): void {
-        if (!this.pointerClient || !this.domRectCache) return;
-
+        const pointer = GlintCanvas.pointerClient;
         const rect = this.domRectCache;
-        const x = (this.pointerClient.x - rect.left) * this.dpr;
-        const y = (rect.height - (this.pointerClient.y - rect.top)) * this.dpr;
+
+        if (!pointer || !rect
+            || pointer.x < rect.left || pointer.x > rect.right
+            || pointer.y < rect.top || pointer.y > rect.bottom) {
+            this.mousePosition.moveOutofBounds();
+            return;
+        }
+
+        const x = (pointer.x - rect.left) * this.dpr;
+        const y = (rect.height - (pointer.y - rect.top)) * this.dpr;
         this.mousePosition = new Vector2(x, y);
     }
 
@@ -504,6 +548,8 @@ export class GlintCanvas {
         if (this.gl.isContextLost()) {
             return;
         }
+
+        this.projectPointer();
 
         const numComponents = 2;
         const type = this.gl.FLOAT;
