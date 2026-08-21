@@ -602,7 +602,7 @@ export class GlintCanvas {
         this.gl.uniform1f(this.programInfo.uniformLocations.pulse, this.pulseEasing(this.clickTimer));
         this.gl.uniform1f(this.programInfo.uniformLocations.time, time);
         this.gl.uniform3f(this.programInfo.uniformLocations.resolution, this.canvas.width, this.canvas.height, 1.0);
-        this.gl.uniform2f(this.programInfo.uniformLocations.scale, this.scale.x * this.dpr, this.scale.y * this.dpr);
+        this.gl.uniform2f(this.programInfo.uniformLocations.scale, this.scale.x, this.scale.y);
         this.gl.uniform2f(this.programInfo.uniformLocations.mouse, this.mousePosition.x, this.mousePosition.y);
 
         for (const uniform of this.additionalUniforms) {
