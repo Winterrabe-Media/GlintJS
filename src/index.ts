@@ -6,6 +6,7 @@ import stars from "./assets/shaders/stars.glsl";
 import circles from "./assets/shaders/circles.glsl";
 import colorGradients from "./assets/shaders/color-gradients.glsl";
 import circleGlow from "./assets/shaders/circle-glow.glsl";
+import h1Shader from "./assets/shaders/h1-shader.glsl";
 
 const shaders = {
     lensing,
@@ -166,5 +167,17 @@ const shaders = {
         });
         glint.startRender();
     }
+
+
+    const h1Target = document.querySelector("h1") as HTMLElement;
+    const h1Canvas = document.querySelector("#h1canvas") as HTMLCanvasElement;
+
+    const h1C = new GlintCanvas({
+        element: h1Canvas,
+        targetElement: h1Target,
+        fragmentSource: h1Shader,
+        zIndex: 1
+    });
+    h1C.startRender();
 
 })();

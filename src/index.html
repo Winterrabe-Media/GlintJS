@@ -75,6 +75,21 @@
             font-size: clamp(3rem, 8vw, 7rem);
             line-height: 1;
             margin-bottom: 1rem;
+            display: inline-block;
+            color: #fff;
+            cursor: default;
+        }
+
+        .hero {
+            isolation: isolate;
+            background: linear-gradient(var(--bg) 70%, transparent);
+        }
+
+        /* multiplies the shader into the white glyphs; everywhere else it
+           multiplies against the near-black page background and vanishes */
+        #h1canvas {
+            mix-blend-mode: multiply;
+            pointer-events: none;
         }
 
         .hero p {
@@ -293,6 +308,7 @@
             <span class="badge">WebGL 1.0</span>
             <span class="badge">WebGL 2.0</span>
             <h1>GlintJs</h1>
+            <canvas id="h1canvas"></canvas>
             <p>
                 Add responsive and interactive GLSL backgrounds to any HTML element
                 with a few lines of code.
