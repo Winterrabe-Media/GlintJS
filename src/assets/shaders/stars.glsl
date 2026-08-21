@@ -6,6 +6,7 @@ uniform vec2 uMouse;
 uniform vec3 uResolution;
 uniform vec2 uPulsePos;
 uniform vec2 uScale;
+uniform float uStarAmount;
 
 float rand(vec2 p)
 {
@@ -47,7 +48,7 @@ void main()
 
     float m = mouseMask(0.001, .075, uv, mouse, 0.01);
 
-    float grid = 32.;
+    float grid = 32. * clamp(uStarAmount, 1., 10.);
     vec2 cell = floor(uv * grid);
     vec2 local = fract(uv * grid) - 0.5;
 

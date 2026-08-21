@@ -147,7 +147,14 @@ const shaders = {
         targetElement: backgroundTarget,
         fragmentSource: stars,
         zIndex: -2,
-        maxPixelRatio: 1
+        maxPixelRatio: 1,
+        uniforms: [
+            { name: 'uStarAmount', value: 2 }
+        ],
+        onUpdate: (canvas, time, delta) => {
+            const isMobile = window.innerWidth < 768;
+            canvas.additionalUniforms[0].value = isMobile ? 3 : 1;
+        }
     });
     glintBackground.startRender();
 
