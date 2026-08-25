@@ -6,7 +6,7 @@ import stars from "./assets/shaders/stars.glsl";
 import circles from "./assets/shaders/circles.glsl";
 import colorGradients from "./assets/shaders/color-gradients.glsl";
 import circleGlow from "./assets/shaders/circle-glow.glsl";
-import h1Shader from "./assets/shaders/h1-shader.glsl";
+import domainWarpingShader from "./assets/shaders/domain-warping-shader.glsl";
 
 const shaders = {
     lensing,
@@ -15,7 +15,8 @@ const shaders = {
     stars,
     colorGradients,
     circles,
-    circleGlow
+    circleGlow,
+    domainWarpingShader
 };
 
 (function setupCopyButtons() {
@@ -37,7 +38,6 @@ const shaders = {
 
     document.querySelectorAll("[data-shader]").forEach(btn => {
         btn.addEventListener("click", async () => {
-            console.log(btn)
             const name = btn.getAttribute("data-shader");
             await navigator.clipboard.writeText(shaders[name]);
 
@@ -182,9 +182,21 @@ const shaders = {
     const h1C = new GlintCanvas({
         element: h1Canvas,
         targetElement: h1Target,
-        fragmentSource: h1Shader,
-        zIndex: 1
+        fragmentSource: domainWarpingShader,
+        zIndex: 1,
+        webglVersion: "webgl2"
     });
     h1C.startRender();
+
+    const domainWarpingTarget = document.querySelector("#domain-warping-shader") as HTMLElement;
+    const domainWarpingCanvas = domainWarpingTarget.querySelector("canvas") as HTMLCanvasElement;
+    const domainWarping = new GlintCanvas({
+        element: domainWarpingCanvas,
+        targetElement: domainWarpingTarget,
+        fragmentSource: domainWarpingShader,
+        zIndex: 1,
+        webglVersion: "webgl2"
+    });
+    domainWarping.startRender();
 
 })();
