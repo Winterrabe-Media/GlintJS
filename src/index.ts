@@ -184,7 +184,15 @@ const shaders = {
         targetElement: h1Target,
         fragmentSource: domainWarpingShader,
         zIndex: 1,
-        webglVersion: "webgl2"
+        webglVersion: "webgl2",
+        mobileFps: 24,
+        uniforms: [
+            { name: 'uMaxIterations', value: 3 }
+        ],
+        onUpdate: (canvas, time, delta) => {
+            const isMobile = window.innerWidth < 768;
+            canvas.additionalUniforms[0].value = isMobile ? 1 : 3;
+        }
     });
     h1C.startRender();
 
@@ -195,7 +203,15 @@ const shaders = {
         targetElement: domainWarpingTarget,
         fragmentSource: domainWarpingShader,
         zIndex: 1,
-        webglVersion: "webgl2"
+        webglVersion: "webgl2",
+        mobileFps: 24,
+        uniforms: [
+            { name: 'uMaxIterations', value: 1 }
+        ],
+        onUpdate: (canvas, time, delta) => {
+            const isMobile = window.innerWidth < 768;
+            canvas.additionalUniforms[0].value = isMobile ? 1 : 3;
+        }
     });
     domainWarping.startRender();
 

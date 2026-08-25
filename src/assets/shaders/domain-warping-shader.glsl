@@ -6,6 +6,7 @@ uniform float uPulse;
 uniform vec2 uMouse;
 uniform vec3 uResolution;
 uniform vec2 uScale;
+uniform float uMaxIterations;
 out vec4 fragColor;
 
 // Simplex noise, Ian McEwan / Ashima Arts (MIT)
@@ -49,7 +50,7 @@ float fbm(vec2 p) {
     float sum = 0.;
     float amp = .5;
 
-    for (int i = 0; i < 2; i++) {
+    for (float i = 0.0; i < uMaxIterations; i++) {
         sum += amp * snoise(p);
         // the offset per octave keeps the lattices from lining up on a grid
         p = p * 2.03 + vec2(11.3, 7.7);
