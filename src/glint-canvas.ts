@@ -50,6 +50,51 @@ export type Uniform = {
 /** WebGL context version. `"auto"` prefers WebGL 2 and falls back to WebGL 1. */
 export type WebGLVersion = "webgl" | "webgl2" | "auto";
 
+/** Wrap mode for texture coordinates outside the 0..1 range. */
+export type TextureWrap = "clamp" | "repeat" | "mirror";
+
+/** Sampling filter. `"linear"` blends between texels, `"nearest"` keeps hard pixel edges. */
+export type TextureFilter = "linear" | "nearest";
+
+export interface TextureOptions {
+    /** Name of the `uniform sampler2D` in the fragment shader.
+     * The image size in pixels is passed alongside it as `uniform vec2 <name>Resolution`.
+     */
+    name: string
+    /** Image URL, or an image source that is already available
+     * (HTMLImageElement, HTMLCanvasElement, ImageBitmap, ImageData, ...).
+     */
+    src: string | TexImageSource
+    /** Default is `"clamp"`.
+     * WebGL 1 supports `"repeat"` and `"mirror"` only for power-of-two image sizes
+     * and falls back to `"clamp"` otherwise.
+     */
+    wrap?: TextureWrap
+    /** Default is `"linear"`. */
+    filter?: TextureFilter
+    /** Flip the image vertically on upload so that `v = 0` samples the bottom edge
+     * of the image, matching `gl_FragCoord`. Default is `true`.
+     */
+    flipY?: boolean
+    /** CORS mode for images loaded from a URL. Default is `"anonymous"`.
+     * Cross-origin images need CORS headers either way: a tainted image can not be
+     * uploaded to WebGL.
+     */
+    crossOrigin?: "anonymous" | "use-credentials"
+}
+
+/** A texture bound to one texture unit of the active context. */
+interface TextureSlot {
+    options: TextureOptions
+    unit: number
+    /** `null` once the slot has been released by deactivate() */
+    texture: WebGLTexture | null
+    samplerLocation: WebGLUniformLocation | null
+    resolutionLocation: WebGLUniformLocation | null
+    width: number
+    height: number
+}
+
 export interface ICanvasOptions {
     /** Canvas element to render on */
     element: HTMLCanvasElement
@@ -72,6 +117,8 @@ export interface ICanvasOptions {
     pulseSpeed?: number
     /** Additional custom uniforms */
     uniforms?: Uniform[],
+    /** Images to sample in the fragment shader. See {@link TextureOptions}. */
+    textures?: TextureOptions[],
     /** Scale the shader coordinate space (default: Vector2(1, 1)) */
     scaleModifier?: Vector2,
     /** Default is -1 */
@@ -147,6 +194,11 @@ export class GlintCanvas {
     private activeVersion: "webgl" | "webgl2" = null;
     private isMobile: boolean = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+    /** Textures of the active context, index = texture unit */
+    private textures: TextureSlot[] = [];
+    /** Decoded images by URL. Kept across deactivate/init cycles so a re-init only
+     * re-uploads instead of downloading and decoding again. */
+    private readonly imageCache = new Map<string, HTMLImageElement>();
 
     constructor(options: ICanvasOptions) {
         this.options = options;
@@ -289,6 +341,7 @@ export class GlintCanvas {
                 this.programInfo.uniformLocations[uniform.name] = this.gl.getUniformLocation(shaderProgram, uniform.name);
             }
         }
+        this.initTextures(shaderProgram);
 
         if (this.targetElement) {
             this.targetElement.style.position = "relative";
@@ -402,6 +455,8 @@ export class GlintCanvas {
         this.targetElement?.removeEventListener("pointerleave", this.onMouseLeave);
 
         if (this.gl) {
+            this.deleteTextures();
+
             if (this.positionBuffer) {
                 this.gl.deleteBuffer(this.positionBuffer);
                 this.positionBuffer = null;
@@ -608,6 +663,7 @@ export class GlintCanvas {
         for (const uniform of this.additionalUniforms) {
             this.setCustomUniform(uniform);
         }
+        this.bindTextures();
 
         const offset = 0;
         const vertexCount = 4;
@@ -671,6 +727,183 @@ export class GlintCanvas {
         }
 
         return shader;
+    }
+
+    private initTextures(program: WebGLProgram): void {
+        // WebGL 2 is a superset for everything used here; the narrower type keeps the
+        // texImage2D overloads resolvable on the union.
+        const gl = this.gl as WebGLRenderingContext;
+        const requested = this.options.textures ?? [];
+        this.textures = [];
+        if (requested.length === 0) return;
+
+        const maxUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number;
+        if (requested.length > maxUnits) {
+            throw new Error(`${requested.length} textures requested, but the fragment shader can sample at most ${maxUnits} on this device.`);
+        }
+
+        requested.forEach((options, unit) => {
+            const samplerLocation = gl.getUniformLocation(program, options.name);
+            if (samplerLocation === null) {
+                console.warn(`GlintCanvas: texture "${options.name}" has no matching "uniform sampler2D ${options.name};" in the fragment shader, or the sampler is never used.`);
+            }
+
+            const slot: TextureSlot = {
+                options,
+                unit,
+                texture: gl.createTexture(),
+                samplerLocation,
+                resolutionLocation: gl.getUniformLocation(program, `${options.name}Resolution`),
+                width: 1,
+                height: 1,
+            };
+            this.textures.push(slot);
+
+            // Transparent 1x1 placeholder: the shader has something valid to sample
+            // while the image is still downloading.
+            gl.activeTexture(gl.TEXTURE0 + unit);
+            gl.bindTexture(gl.TEXTURE_2D, slot.texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+            this.resolveTextureSource(slot);
+        });
+    }
+
+    /** Uploads the source right away when it is available, otherwise once it has loaded. */
+    private resolveTextureSource(slot: TextureSlot): void {
+        const src = slot.options.src;
+
+        if (typeof src !== "string") {
+            if (src instanceof HTMLImageElement && !src.complete) {
+                this.uploadWhenLoaded(slot, src);
+            } else {
+                this.uploadTexture(slot, src);
+            }
+            return;
+        }
+
+        let image = this.imageCache.get(src);
+        if (!image) {
+            image = new Image();
+            // Has to be set before src: without CORS the request still succeeds, but
+            // the image is tainted and texImage2D throws a SecurityError.
+            image.crossOrigin = slot.options.crossOrigin ?? "anonymous";
+            image.src = src;
+            this.imageCache.set(src, image);
+        }
+
+        if (image.complete && image.naturalWidth > 0) {
+            this.uploadTexture(slot, image);
+            return;
+        }
+
+        this.uploadWhenLoaded(slot, image);
+    }
+
+    private uploadWhenLoaded(slot: TextureSlot, image: HTMLImageElement): void {
+        const onLoad = (): void => {
+            image.removeEventListener("error", onError);
+            // deactivate() released the slot while the download was running. The next
+            // init() creates a fresh slot and finds the image in the cache.
+            if (slot.texture === null || !this.gl) return;
+            this.uploadTexture(slot, image);
+        };
+        const onError = (): void => {
+            image.removeEventListener("load", onLoad);
+            if (typeof slot.options.src === "string") {
+                this.imageCache.delete(slot.options.src);
+            }
+            console.warn(`GlintCanvas: texture "${slot.options.name}" could not be loaded from "${image.src}".`);
+        };
+
+        image.addEventListener("load", onLoad, { once: true });
+        image.addEventListener("error", onError, { once: true });
+    }
+
+    private uploadTexture(slot: TextureSlot, source: TexImageSource): void {
+        const gl = this.gl as WebGLRenderingContext;
+        const options = slot.options;
+        const { width, height } = GlintCanvas.sourceSize(source);
+        if (width === 0 || height === 0) {
+            console.warn(`GlintCanvas: texture "${options.name}" has no image data and was skipped.`);
+            return;
+        }
+
+        const filter = options.filter ?? "linear";
+        let wrap = options.wrap ?? "clamp";
+
+        // WebGL 1 restricts non-power-of-two textures to clamp wrapping without mipmaps.
+        const isPot = GlintCanvas.isPowerOf2(width) && GlintCanvas.isPowerOf2(height);
+        const npotRestricted = this.activeVersion === "webgl" && !isPot;
+        if (npotRestricted && wrap !== "clamp") {
+            console.warn(`GlintCanvas: texture "${options.name}" is ${width}x${height}, not a power of two. WebGL 1 only supports "clamp" wrapping for it, falling back. Use webglVersion "webgl2" or "auto", or resize the image.`);
+            wrap = "clamp";
+        }
+        const useMipmaps = filter === "linear" && !npotRestricted;
+
+        gl.activeTexture(gl.TEXTURE0 + slot.unit);
+        gl.bindTexture(gl.TEXTURE_2D, slot.texture);
+        // Unpack state is global to the context, so set it per upload rather than once.
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, options.flipY ?? true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+
+        const glWrap = wrap === "repeat" ? gl.REPEAT
+            : wrap === "mirror" ? gl.MIRRORED_REPEAT
+                : gl.CLAMP_TO_EDGE;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, glWrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, glWrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter === "nearest" ? gl.NEAREST : gl.LINEAR);
+
+        if (useMipmaps) {
+            gl.generateMipmap(gl.TEXTURE_2D);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        } else {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter === "nearest" ? gl.NEAREST : gl.LINEAR);
+        }
+
+        slot.width = width;
+        slot.height = height;
+    }
+
+    /** Binds every texture to its unit and points the sampler uniforms at them. */
+    private bindTextures(): void {
+        for (const slot of this.textures) {
+            this.gl.activeTexture(this.gl.TEXTURE0 + slot.unit);
+            this.gl.bindTexture(this.gl.TEXTURE_2D, slot.texture);
+            this.gl.uniform1i(slot.samplerLocation, slot.unit);
+            this.gl.uniform2f(slot.resolutionLocation, slot.width, slot.height);
+        }
+    }
+
+    private deleteTextures(): void {
+        for (const slot of this.textures) {
+            if (slot.texture) {
+                this.gl.deleteTexture(slot.texture);
+            }
+            slot.texture = null;
+        }
+        this.textures = [];
+    }
+
+    private static sourceSize(source: TexImageSource): { width: number, height: number } {
+        if (source instanceof HTMLImageElement) {
+            return { width: source.naturalWidth, height: source.naturalHeight };
+        }
+        if (source instanceof HTMLVideoElement) {
+            return { width: source.videoWidth, height: source.videoHeight };
+        }
+        if ("displayWidth" in source) {
+            return { width: source.displayWidth, height: source.displayHeight };
+        }
+        return { width: source.width, height: source.height };
+    }
+
+    private static isPowerOf2(value: number): boolean {
+        return (value & (value - 1)) === 0;
     }
 
     private get dpr(): number {

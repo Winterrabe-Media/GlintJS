@@ -7,6 +7,8 @@ import circles from "./assets/shaders/circles.glsl";
 import colorGradients from "./assets/shaders/color-gradients.glsl";
 import circleGlow from "./assets/shaders/circle-glow.glsl";
 import domainWarpingShader from "./assets/shaders/domain-warping-shader.glsl";
+import textureRipple from "./assets/shaders/texture-ripple.glsl";
+import textureImage from "./assets/images/example-texture-ripple.png";
 
 const shaders = {
     lensing,
@@ -16,7 +18,8 @@ const shaders = {
     colorGradients,
     circles,
     circleGlow,
-    domainWarpingShader
+    domainWarpingShader,
+    textureRipple
 };
 
 (function setupCopyButtons() {
@@ -214,5 +217,20 @@ const shaders = {
         }
     });
     domainWarping.startRender();
+
+    const textureTarget = document.querySelector("#texture-ripple") as HTMLElement;
+    const textureCanvas = textureTarget.querySelector("canvas") as HTMLCanvasElement;
+    const glintTexture = new GlintCanvas({
+        element: textureCanvas,
+        targetElement: textureTarget,
+        fragmentSource: textureRipple,
+        // "mirror" wrapping needs WebGL 2 for a non-power-of-two image
+        webglVersion: "webgl2",
+        pulseSpeed: 2,
+        textures: [
+            { name: "uTexture", src: textureImage, wrap: "mirror" }
+        ]
+    });
+    glintTexture.startRender();
 
 })();
