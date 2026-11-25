@@ -12,6 +12,7 @@
 - **Mouse tracking** — shader receives live cursor position
 - **Click pulse** — animated ripple effect on click with easing control
 - **Custom uniforms** — pass any value from JavaScript directly into your shader
+- **Textures** — sample images in your shader, with the image size available for cover/contain fits
 - **Element backgrounds** — attach to any element, not just full-page canvases
 - **Auto-pause** — rendering stops when the canvas scrolls out of view
 - **Scale modifier** — adjust the shader coordinate space independently of canvas size
@@ -137,6 +138,8 @@ interface ICanvasOptions {
   pulseSpeed?: number;
   /** Additional custom uniforms */
   uniforms?: Uniform[];
+  /** Images to sample in the fragment shader */
+  textures?: TextureOptions[];
   /** Scale the shader coordinate space (default: Vector2(1, 1)) */
   scaleModifier?: Vector2;
   /** z-index applied to the canvas. Default is -1 */
@@ -186,6 +189,73 @@ const canvas = new GlintCanvas({
   },
 });
 ```
+
+## Textures
+
+Pass images into your shader as `sampler2D` uniforms:
+
+```typescript
+const canvas = new GlintCanvas({
+  element: document.querySelector("#glcanvas"),
+  fragmentSource: myShader,
+  textures: [
+    { name: "uTexture", src: "/images/photo.jpg" },
+  ],
+});
+```
+
+```glsl
+uniform sampler2D uTexture;
+uniform vec2 uTextureResolution; // image size in pixels
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / uResolution.xy;
+    gl_FragColor = texture2D(uTexture, uv); // GLSL ES 3.00: texture(uTexture, uv)
+}
+```
+
+For every texture, GlintJS also sets `<name>Resolution` (`vec2`) to the image size in pixels once the image has loaded. Use it to fit the image like CSS `background-size: cover`:
+
+```glsl
+vec2 coverUv(vec2 uv, vec2 canvasRes, vec2 texRes) {
+    float canvasAspect = canvasRes.x / canvasRes.y;
+    float texAspect = texRes.x / texRes.y;
+    vec2 scale = canvasAspect > texAspect
+        ? vec2(1., texAspect / canvasAspect)
+        : vec2(canvasAspect / texAspect, 1.);
+    return (uv - .5) * scale + .5;
+}
+
+// gl_FragColor = texture2D(uTexture, coverUv(uv, uResolution.xy, uTextureResolution));
+```
+
+Until the image has loaded, the sampler returns transparent black.
+
+### Texture options
+
+```typescript
+interface TextureOptions {
+  /** Name of the sampler2D uniform */
+  name: string;
+  /** Image URL, or an image source that is already available
+   * (HTMLImageElement, HTMLCanvasElement, ImageBitmap, ImageData, ...) */
+  src: string | TexImageSource;
+  /** "clamp" (default), "repeat" or "mirror" */
+  wrap?: TextureWrap;
+  /** "linear" (default) or "nearest" */
+  filter?: TextureFilter;
+  /** Flip vertically on upload so v = 0 is the bottom edge, matching gl_FragCoord. Default: true */
+  flipY?: boolean;
+  /** CORS mode for URL sources. Default: "anonymous" */
+  crossOrigin?: "anonymous" | "use-credentials";
+}
+```
+
+Notes:
+
+* Images from another origin need CORS headers (`Access-Control-Allow-Origin`) on the image server. Without them the browser refuses to upload the image to WebGL.
+* WebGL 1 supports `"repeat"` and `"mirror"` only for power-of-two image sizes (256, 512, 1024, ...). Other sizes fall back to `"clamp"` with a console warning. Use `webglVersion: "webgl2"` or `"auto"` to lift that restriction.
+* Textures count against the device's texture unit limit (at least 8 per shader).
 
 ## API
 
